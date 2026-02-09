@@ -1,0 +1,126 @@
+@startuml
+skinparam monochrome false
+skinparam backgroundColor white
+skinparam defaultFontSize 10
+
+title Level 2 Data Flow Diagram - duo-mate System (Detailed Process Breakdown)
+
+' External Entities
+actor "User" as user
+cloud "OAuth" as oauth
+cloud "Twitter" as twitter
+cloud "LinkedIn" as linkedin
+cloud "Email" as email
+
+' Data Stores
+database "MongoDB" as mongo
+database "Qdrant" as qdrant
+database "Models" as models
+database "Redis" as redis
+database "Queue" as queue
+
+' Layer 0: Frontend (Detailed)
+package "0.0 Frontend Layer" {
+  rectangle "0.1\nNext.js\nApp" as nextjs
+  rectangle "0.2\nAuth\nProvider" as authprov
+  rectangle "0.3\nAPI\nClient" as apiclient
+}
+
+' Layer 1: API Gateway (Detailed)
+package "1.0 API Gateway & Security" {
+  rectangle "1.1\nRate\nLimiter" as ratelimit
+  rectangle "1.2\nAuth\nValidator" as authval
+  rectangle "1.3\nRequest\nRouter" as router
+  rectangle "1.4\nDocument\nScanner" as scanner
+}
+
+' Layer 2: Data Collection (Detailed)
+package "2.0 Data Collection & Features" {
+  rectangle "2.1\nTwitter\nETL" as twitteretl
+  rectangle "2.2\nLinkedIn\nETL" as linkedetl
+  rectangle "2.3\nEmail\nETL" as emailetl
+  rectangle "2.4\nData\nCleaner" as cleaner
+  rectangle "2.5\nChunker" as chunker
+  rectangle "2.6\nEmbedder" as embedder
+}
+
+' Layer 3: Training (Detailed)
+package "3.0 Training Pipeline" {
+  rectangle "3.1\nDataset\nPrep" as dataprep
+  rectangle "3.2\nLoRA\nTrainer" as trainer
+  rectangle "3.3\nModel\nEvaluator" as evaluator
+  rectangle "3.4\nQuantizer" as quantizer
+}
+
+' Layer 4: Inference (Detailed)
+package "4.0 Inference Pipeline" {
+  rectangle "4.1\nCache\nCheck" as cachecheck
+  rectangle "4.2\nRAG\nRetrieval" as rag
+  rectangle "4.3\nModel\nCascading" as cascading
+  rectangle "4.4\nLLM\nService" as llm
+  rectangle "4.5\nPrompt\nMonitor" as monitor
+}
+
+' User to Frontend
+user --> nextjs : Access app
+nextjs --> user : Render UI
+
+' Frontend Internal
+nextjs --> authprov : Auth state
+authprov --> oauth : OAuth flow
+oauth --> authprov : Tokens
+nextjs --> apiclient : API calls
+apiclient --> ratelimit : Requests + JWT
+
+' API Gateway Flow
+ratelimit --> redis : Check limits
+ratelimit --> authval : Validated
+authval --> scanner : Scan uploads
+scanner --> router : Route
+
+' Data Collection Trigger
+router --> twitteretl : Start ETL
+router --> linkedetl : Start ETL
+router --> emailetl : Start ETL
+
+' External to ETL
+twitter --> twitteretl : Fetch data
+linkedin --> linkedetl : Fetch data
+email --> emailetl : Fetch data
+
+' ETL to Queue
+twitteretl --> queue : Raw data
+linkedetl --> queue : Raw data
+emailetl --> queue : Raw data
+queue --> cleaner : Process
+
+' Feature Pipeline
+cleaner --> mongo : Clean data
+mongo --> chunker : Retrieve
+chunker --> embedder : Chunks
+embedder --> qdrant : Vectors
+
+' Training Flow
+qdrant --> dataprep : Fetch data
+dataprep --> trainer : Datasets
+trainer --> evaluator : Candidate
+evaluator --> quantizer : Approved
+quantizer --> models : Save model
+
+' Inference Request
+router --> cachecheck : Generate req
+cachecheck --> redis : Query cache
+redis -.-> cachecheck : Hit
+cachecheck --> rag : Miss
+rag --> qdrant : Search
+qdrant --> rag : Context
+rag --> cascading : Enriched
+cascading --> llm : Select model
+llm --> models : Load
+llm --> monitor : Response
+monitor --> redis : Cache
+monitor --> router : Result
+router --> apiclient : Content
+apiclient --> nextjs : Display
+
+@enduml

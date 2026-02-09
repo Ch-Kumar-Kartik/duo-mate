@@ -1,0 +1,59 @@
+@startuml
+skinparam monochrome false
+skinparam backgroundColor white
+skinparam defaultFontSize 11
+
+title Level 1 Data Flow Diagram - duo-mate System
+
+' External Entities
+actor "User" as user <<external>>
+cloud "OAuth Providers" as oauth <<external>>
+cloud "Twitter/X" as twitter <<external>>
+cloud "LinkedIn" as linkedin <<external>>
+cloud "Email" as email <<external>>
+
+' Processes
+rectangle "0.0\nFrontend Layer" as frontend <<process>>
+rectangle "1.0\nAPI Gateway\n& Security" as gateway <<process>>
+rectangle "2.0\nData Collection\n& Features" as datacoll <<process>>
+rectangle "3.0\nTraining\nPipeline" as training <<process>>
+rectangle "4.0\nInference\nPipeline" as inference <<process>>
+
+' Data Stores
+database "MongoDB" as mongo <<datastore>>
+database "Qdrant\n(Vectors)" as qdrant <<datastore>>
+database "Model\nRegistry" as models <<datastore>>
+database "Redis\n(Cache)" as redis <<datastore>>
+
+' User Flows
+user --> frontend : Access app
+frontend --> user : UI response
+frontend --> gateway : API requests\n+ JWT
+
+' Auth Flow
+frontend --> oauth : OAuth login
+oauth --> gateway : Auth tokens
+gateway --> redis : Store session
+
+' Data Collection
+gateway --> datacoll : Trigger ETL
+twitter --> datacoll : Tweets
+linkedin --> datacoll : Posts
+email --> datacoll : Emails
+datacoll --> mongo : Raw data
+mongo --> datacoll : CDC stream
+datacoll --> qdrant : Embeddings
+
+' Training
+qdrant --> training : Datasets
+training --> models : Fine-tuned\nmodels
+
+' Inference
+gateway --> inference : Generate\nrequest
+inference --> redis : Check cache
+inference --> qdrant : RAG search
+inference --> models : Load model
+inference --> gateway : Response
+gateway --> frontend : Content
+
+@enduml

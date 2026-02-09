@@ -1,0 +1,200 @@
+@startuml
+skinparam monochrome false
+skinparam backgroundColor white
+skinparam sequenceDividerBackgroundColor lightgray
+skinparam sequenceBoxBorderColor black
+
+title OAuth 2.0 Authorization Code Flow with PKCE - duo-mate
+
+actor "User" as user
+participant "Browser" as browser
+participant "Next.js\nFrontend" as frontend
+participant "OAuth Service\n(NextAuth.js)" as oauth_service
+participant "OAuth Provider\n(Google/GitHub/LinkedIn)" as provider
+participant "Redis\nSession Store" as redis
+participant "Auth Service\n(JWT)" as auth
+participant "MongoDB\nUser DB" as mongo
+
+== User Initiates Login ==
+
+user -> browser : Click "Login with Google"
+browser -> frontend : GET /login
+activate frontend
+frontend -> browser : Render OAuth buttons
+deactivate frontend
+
+user -> browser : Select OAuth provider
+browser -> oauth_service : Initiate OAuth flow
+activate oauth_service
+
+== Generate PKCE Parameters ==
+
+oauth_service -> oauth_service : Generate code_verifier\n(random 43-128 chars)
+oauth_service -> oauth_service : Generate code_challenge\n= SHA256(code_verifier)
+oauth_service -> oauth_service : Generate state\n(CSRF token, 32 bytes)
+oauth_service -> oauth_service : Generate nonce\n(replay protection)
+
+== Authorization Request ==
+
+oauth_service -> browser : Redirect to OAuth provider
+deactivate oauth_service
+activate browser
+
+browser -> provider : GET /authorize?\n- client_id\n- redirect_uri\n- response_type=code\n- scope=openid profile email\n- state=<csrf_token>\n- code_challenge=<hash>\n- code_challenge_method=S256\n- nonce=<nonce>
+deactivate browser
+activate provider
+
+== User Authentication at Provider ==
+
+provider -> user : Show login page
+user -> provider : Enter credentials\n(username + password)
+provider -> provider : Authenticate user
+provider -> user : Show consent screen\n(request permissions)
+user -> provider : Grant permissions
+
+== Authorization Response ==
+
+provider -> browser : Redirect to callback:\n/api/auth/callback/google?\n- code=<auth_code>\n- state=<csrf_token>
+deactivate provider
+activate browser
+
+browser -> oauth_service : GET /api/auth/callback/google?\ncode=<auth_code>&state=<state>
+deactivate browser
+activate oauth_service
+
+== Validate State & Exchange Code ==
+
+oauth_service -> oauth_service : Validate state parameter\n(CSRF check)
+alt State valid
+    oauth_service -> provider : POST /token\n- grant_type=authorization_code\n- code=<auth_code>\n- redirect_uri\n- client_id\n- client_secret\n- code_verifier=<original>
+    activate provider
+    
+    provider -> provider : Verify code_verifier:\nSHA256(verifier) == code_challenge
+    provider -> oauth_service : Return tokens:\n- access_token\n- refresh_token\n- id_token (JWT)\n- expires_in
+    deactivate provider
+else State invalid
+    oauth_service -> browser : Error: Invalid state\n(CSRF attack detected)
+end
+
+== Decode and Verify ID Token ==
+
+oauth_service -> oauth_service : Decode id_token (JWT)
+oauth_service -> oauth_service : Verify:\n- Signature (provider public key)\n- Issuer (iss)\n- Audience (aud = client_id)\n- Expiration (exp)\n- Nonce (replay protection)
+
+oauth_service -> oauth_service : Extract user info:\n- sub (user ID)\n- email\n- name\n- picture
+
+== Create or Update User ==
+
+oauth_service -> mongo : Check if user exists\n(query by email)
+activate mongo
+
+alt User exists
+    mongo -> oauth_service : Return user_id
+else New user
+    oauth_service -> mongo : Create user record:\n- email\n- name\n- oauth_provider\n- oauth_sub\n- created_at
+    mongo -> oauth_service : Return new user_id
+end
+deactivate mongo
+
+== Generate Internal JWT ==
+
+oauth_service -> auth : Generate internal JWT
+activate auth
+
+auth -> auth : Create JWT payload:\n- sub: user_id\n- email\n- oauth_provider\n- tier (free/premium)\n- iat, exp (15 min)
+
+auth -> auth : Sign JWT with secret
+auth -> oauth_service : Return signed JWT
+deactivate auth
+
+== Create Session ==
+
+oauth_service -> redis : Create session:\nsession_id: {\n  user_id,\n  oauth_provider,\n  access_token (encrypted),\n  refresh_token (encrypted),\n  internal_jwt,\n  expires_at,\n  user_metadata\n}
+activate redis
+redis -> oauth_service : Session stored\n(TTL: 7 days)
+deactivate redis
+
+== Set Secure Cookie ==
+
+oauth_service -> browser : Set-Cookie:\n- name: __Secure-session\n- value: session_id\n- HttpOnly: true\n- Secure: true\n- SameSite: Lax\n- Max-Age: 604800 (7 days)\n- Path: /
+deactivate oauth_service
+
+oauth_service -> browser : Redirect to /dashboard
+activate browser
+
+== User Authenticated ==
+
+browser -> frontend : GET /dashboard
+deactivate browser
+activate frontend
+
+frontend -> frontend : Check session cookie
+frontend -> redis : Validate session_id
+activate redis
+redis -> frontend : Return session data\n(user_id, jwt)
+deactivate redis
+
+frontend -> browser : Render dashboard\n(user authenticated)
+deactivate frontend
+
+browser -> user : Display dashboard
+
+== Subsequent API Requests ==
+
+user -> browser : Generate content
+browser -> frontend : User action
+activate frontend
+
+frontend -> frontend : Get JWT from session
+frontend -> auth : API request:\nAuthorization: Bearer <jwt>
+activate auth
+
+auth -> auth : Validate JWT:\n- Verify signature\n- Check expiration
+auth -> auth : Extract user_id\nfrom JWT payload
+
+alt JWT valid
+    auth -> frontend : Request authorized\n(proceed to inference)
+    frontend -> browser : Return generated content
+else JWT expired
+    auth -> oauth_service : Request token refresh
+    activate oauth_service
+    oauth_service -> redis : Get refresh_token
+    activate redis
+    redis -> oauth_service : Return refresh_token
+    deactivate redis
+    
+    oauth_service -> provider : POST /token:\n- grant_type=refresh_token\n- refresh_token
+    activate provider
+    provider -> oauth_service : New access_token\n+ new refresh_token
+    deactivate provider
+    
+    oauth_service -> redis : Update session:\n- new access_token\n- new refresh_token\n- rotate old tokens
+    activate redis
+    redis -> oauth_service : Updated
+    deactivate redis
+    
+    oauth_service -> auth : New JWT
+    deactivate oauth_service
+    auth -> frontend : New JWT issued
+    frontend -> browser : Retry request with new JWT
+end
+deactivate auth
+deactivate frontend
+
+== User Logout ==
+
+user -> browser : Click logout
+browser -> frontend : POST /api/auth/logout
+activate frontend
+
+frontend -> redis : Delete session_id
+activate redis
+redis -> frontend : Session deleted
+deactivate redis
+
+frontend -> browser : Clear cookie\nRedirect to /login
+deactivate frontend
+
+browser -> user : Logged out
+
+@enduml

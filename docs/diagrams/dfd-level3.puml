@@ -1,0 +1,152 @@
+@startuml
+skinparam monochrome false
+skinparam backgroundColor white
+skinparam defaultFontSize 9
+skinparam packageStyle rectangle
+
+title Level 3 Data Flow Diagram - Inference Pipeline (4.0) Detailed Decomposition
+
+' External Entity
+actor "User" as user
+
+' Data Stores
+database "Redis\nCache" as redis
+database "Qdrant\nVectors" as qdrant
+database "Model\nRegistry" as models
+database "Prompt\nLogs" as logs
+database "User\nPrefs" as prefs
+
+' Process 4.1: Cache Check (Atomic Operations)
+package "4.1 Semantic Cache Check" {
+  rectangle "4.1.1\nGenerate\nQuery\nEmbedding" as embed1
+  rectangle "4.1.2\nSearch\nCache by\nSimilarity" as search1
+  rectangle "4.1.3\nValidate\nCache\nFreshness" as validate1
+  rectangle "4.1.4\nReturn\nCached\nResponse" as return1
+}
+
+' Process 4.2: RAG Retrieval (Atomic Operations)
+package "4.2 RAG Retrieval" {
+  rectangle "4.2.1\nGenerate\nQuery\nEmbedding" as embed2
+  rectangle "4.2.2\nVector\nSearch\nTop-k" as search2
+  rectangle "4.2.3\nRerank\nResults" as rerank
+  rectangle "4.2.4\nFormat\nContext\nWindow" as format
+}
+
+' Process 4.3: Model Cascading (Atomic Operations)
+package "4.3 Model Cascading" {
+  rectangle "4.3.1\nAnalyze\nQuery\nComplexity" as analyze
+  rectangle "4.3.2\nEstimate\nToken\nCount" as estimate
+  rectangle "4.3.3\nSelect\nModel\nSize" as select
+  rectangle "4.3.4\nLoad\nModel\nConfig" as loadcfg
+}
+
+' Process 4.4: LLM Generation (Atomic Operations)
+package "4.4 LLM Generation" {
+  rectangle "4.4.1\nLoad\nPrompt\nTemplate" as template
+  rectangle "4.4.2\nInject\nRAG\nContext" as inject
+  rectangle "4.4.3\nApply\nUser\nStyle" as style
+  rectangle "4.4.4\nExecute\nLLM\nInference" as execute
+  rectangle "4.4.5\nPost-\nprocess\nOutput" as postproc
+}
+
+' Process 4.5: Prompt Monitoring (Atomic Operations)
+package "4.5 Prompt Monitoring" {
+  rectangle "4.5.1\nLog\nPrompt\nMetadata" as logmeta
+  rectangle "4.5.2\nCalculate\nQuality\nMetrics" as metrics
+  rectangle "4.5.3\nGenerate\nCache\nKey" as genkey
+  rectangle "4.5.4\nUpdate\nCache" as update
+  rectangle "4.5.5\nSend to\nMonitoring" as send
+}
+
+' Data Flows
+
+' User Input
+user --> embed1 : User prompt\n+ user_id
+
+' 4.1 Cache Check Flow
+embed1 --> search1 : Query\nembedding
+search1 --> redis : Similarity\nsearch
+redis --> search1 : Matches
+search1 --> validate1 : Cache\nentries
+validate1 --> return1 : Valid cache
+return1 --> user : Cached\nresponse
+validate1 --> embed2 : Cache miss
+
+' 4.2 RAG Retrieval Flow
+embed2 --> search2 : Query\nembedding
+search2 --> qdrant : Vector\nsearch
+qdrant --> search2 : Top-20\nresults
+search2 --> rerank : Results
+rerank --> format : Top-5\nreranked
+format --> analyze : Context +\nquery
+
+' 4.3 Model Cascading Flow
+analyze --> estimate : Complexity\nscore
+estimate --> select : Token\ncount
+select --> prefs : Check\nuser tier
+prefs --> select : Tier info
+select --> loadcfg : Model\nname
+loadcfg --> models : Get\nconfig
+models --> loadcfg : Config
+loadcfg --> template : Model\nready
+
+' 4.4 LLM Generation Flow
+template --> inject : Prompt\ntemplate
+inject <-- format : RAG\ncontext
+inject --> style : Enriched\nprompt
+style --> prefs : Get style\nparams
+prefs --> style : Style info
+style --> execute : Final\nprompt
+execute --> models : Load\nweights
+models --> execute : Model
+execute --> postproc : Raw\noutput
+postproc --> logmeta : Response
+
+' 4.5 Monitoring Flow
+logmeta --> metrics : Prompt +\nresponse
+metrics --> genkey : Quality\ndata
+genkey --> update : Cache\nkey
+update --> redis : Store
+update --> send : Data
+send --> logs : Store
+send --> user : Final\nresponse
+
+' Notes
+note right of embed1
+  Uses same embedding
+  model as training
+  (E5-base-v2)
+end note
+
+note right of search2
+  Cosine similarity
+  with user_id filter
+  Returns top-k=20
+end note
+
+note right of rerank
+  Cross-encoder
+  reranking for
+  precision
+end note
+
+note right of select
+  Rules:
+  Simple < 500 tokens
+    -> Mistral 7B
+  Complex > 500 tokens
+    -> Llama 70B
+end note
+
+note right of execute
+  vLLM engine
+  4-bit quantization
+  Streaming enabled
+end note
+
+note bottom of update
+  TTL: 7 days
+  Similarity: 0.95
+end note
+
+@enduml

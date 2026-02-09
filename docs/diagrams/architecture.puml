@@ -1,0 +1,219 @@
+@startuml
+!define RECTANGLE class
+
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+skinparam defaultFontSize 10
+
+title duo-mate System Architecture - FTI Pipeline with OAuth Integration
+
+' External Entities
+cloud "OAuth Providers" as oauth {
+  [Google OAuth]
+  [GitHub OAuth]
+  [LinkedIn OAuth]
+}
+
+cloud "Data Sources" as sources {
+  [Twitter/X API]
+  [LinkedIn API]
+  [Email Sources]
+}
+
+actor "User" as user
+
+' Layer 0: Frontend & Presentation
+package "Layer 0: Frontend & Presentation" {
+  component [Next.js 14+\nApp Router] as nextjs
+  component [NextAuth.js\nOAuth Handler] as nextauth
+  component [React Components] as components
+  component [Zustand Store] as store
+  component [API Client\n(Axios)] as apiclient
+}
+
+' Layer 1: API Gateway & Security
+package "Layer 1: API Gateway & Security" {
+  component [Kong/Traefik\nAPI Gateway] as gateway
+  component [Rate Limiter] as ratelimiter
+  component [JWT Validator] as jwtvalidator
+  component [CSRF Protection] as csrf
+  component [Document Scanner\n(ClamAV)] as scanner
+  database "Redis\nSessions" as redis_session
+}
+
+' Layer 2: Data Collection & Feature Pipeline
+package "Layer 2: Data Collection & Feature Pipeline" {
+  component [Twitter ETL] as twitter_etl
+  component [LinkedIn ETL] as linkedin_etl
+  component [Email ETL] as email_etl
+  component [Data Cleaner] as cleaner
+  component [Text Chunker] as chunker
+  component [Embedder\n(E5/SBERT)] as embedder
+  component [CDC Stream\n(Bytewax)] as cdc
+  database "MongoDB\nRaw Data" as mongodb
+  database "RabbitMQ\nQueue" as rabbitmq
+  database "Qdrant\nVector DB" as qdrant
+}
+
+' Layer 3: Training Pipeline
+package "Layer 3: Training Pipeline" {
+  component [Dataset Generator] as dataset_gen
+  component [LoRA Trainer\n(Unsloth)] as trainer
+  component [Model Evaluator] as evaluator
+  component [Quantizer\n(4-bit)] as quantizer
+  component [Experiment Tracker\n(CometML)] as comet
+  database "Model Registry\n(S3/Minio)" as model_registry
+  database "PostgreSQL\nMetadata" as postgres
+}
+
+' Layer 4: Inference Pipeline
+package "Layer 4: Inference Pipeline" {
+  component [Semantic Cache] as cache
+  component [RAG Retriever] as rag
+  component [Reranker\n(Cross-encoder)] as reranker
+  component [Model Cascading] as cascading
+  component [vLLM Engine] as vllm
+  component [Prompt Monitor\n(Langfuse)] as langfuse
+  database "Redis\nCache" as redis_cache
+}
+
+' Monitoring & Observability
+package "Cross-Cutting: Monitoring" {
+  component [Prometheus] as prometheus
+  component [Grafana] as grafana
+  component [ELK Stack] as elk
+  component [OpenTelemetry] as otel
+}
+
+' User Interactions
+user --> nextjs : HTTPS\nrequests
+nextjs --> user : UI\nresponse
+
+' Frontend Internal
+nextjs --> nextauth : Auth\nstate
+nextjs --> components : Render
+nextjs --> store : State\nmanagement
+nextjs --> apiclient : API\ncalls
+
+' OAuth Flow
+nextauth --> oauth : OAuth\nflow
+oauth --> nextauth : Tokens
+nextauth --> redis_session : Store\nsession
+
+' Frontend to Backend
+apiclient --> gateway : API\nrequests\n+ JWT
+
+' API Gateway Layer
+gateway --> ratelimiter : Check\nquota
+ratelimiter --> redis_session : Validate
+ratelimiter --> csrf : Verify
+csrf --> jwtvalidator : Validate\nJWT
+jwtvalidator --> scanner : Scan\nuploads
+
+' Data Collection
+scanner --> twitter_etl : Trigger
+scanner --> linkedin_etl : Trigger
+scanner --> email_etl : Trigger
+
+sources --> twitter_etl : Fetch
+sources --> linkedin_etl : Fetch
+sources --> email_etl : Fetch
+
+twitter_etl --> rabbitmq : Raw\ndata
+linkedin_etl --> rabbitmq : Raw\ndata
+email_etl --> rabbitmq : Raw\ndata
+
+' Feature Pipeline
+rabbitmq --> cleaner : Process
+cleaner --> mongodb : Store\nclean
+mongodb --> cdc : Stream
+cdc --> chunker : Chunks
+chunker --> embedder : Text
+embedder --> qdrant : Vectors
+
+' Training Flow
+qdrant --> dataset_gen : Fetch\ndata
+dataset_gen --> trainer : Datasets
+trainer --> comet : Log\nmetrics
+trainer --> evaluator : Model
+evaluator --> quantizer : Approved
+quantizer --> model_registry : Save
+quantizer --> postgres : Metadata
+
+' Inference Flow
+scanner --> cache : Generate\nrequest
+cache --> redis_cache : Query
+redis_cache -.-> cache : Hit
+cache --> rag : Miss
+rag --> qdrant : Search
+qdrant --> rag : Vectors
+rag --> reranker : Results
+reranker --> cascading : Context
+cascading --> vllm : Prompt
+vllm --> model_registry : Load\nmodel
+vllm --> langfuse : Log
+langfuse --> redis_cache : Cache\nresponse
+langfuse --> gateway : Response
+
+' Response back to frontend
+gateway --> apiclient : Content
+apiclient --> nextjs : Display
+
+' Monitoring
+gateway --> prometheus : Metrics
+twitter_etl --> prometheus : Metrics
+trainer --> prometheus : Metrics
+vllm --> prometheus : Metrics
+prometheus --> grafana : Visualize
+
+gateway --> elk : Logs
+nextjs --> elk : Logs
+trainer --> elk : Logs
+vllm --> elk : Logs
+
+gateway --> otel : Traces
+vllm --> otel : Traces
+
+note right of nextjs
+  - Server Components
+  - Client Components
+  - SSR/SSG support
+  - Real-time SSE
+end note
+
+note right of gateway
+  - Rate limiting
+  - CORS handling
+  - TLS termination
+  - Request routing
+end note
+
+note right of qdrant
+  Per-user collections:
+  - user_<id>_twitter
+  - user_<id>_linkedin
+  - user_<id>_email
+end note
+
+note right of trainer
+  - LoRA/QLoRA
+  - Gradient checkpointing
+  - Mixed precision
+  - Auto-resume
+end note
+
+note right of vllm
+  - 4-bit quantization
+  - KV cache
+  - Continuous batching
+  - Streaming output
+end note
+
+note bottom of redis_cache
+  Semantic caching:
+  - 7-day TTL
+  - Cosine similarity
+  - 50-60% hit rate
+end note
+
+@enduml

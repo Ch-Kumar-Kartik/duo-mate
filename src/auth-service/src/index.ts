@@ -6,6 +6,11 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/auth.js';
 
+// TODO: Uncomment these after implementing:
+// import 'dotenv/config';                          // Load .env FIRST (install: bun add dotenv)
+// import { connectDB } from './config/mongodb.js'; // MongoDB connection
+// import emailRoutes from './routes/email.js';     // Email sync + query routes
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -20,6 +25,8 @@ app.use(express.json());
 
 // Routes
 app.use('/auth', authRoutes);
+// TODO: Uncomment after implementing email routes:
+// app.use('/email', emailRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -27,6 +34,13 @@ app.get('/health', (req, res) => {
 });
 
 // Start server
+// TODO: Connect to MongoDB before starting the server:
+// connectDB().then(() => {
+//     app.listen(PORT, () => {
+//         console.log(`Auth service running on http://localhost:${PORT}`);
+//     });
+// });
+// For now (before MongoDB is implemented), keep the simple version:
 app.listen(PORT, () => {
     console.log(`Auth service running on http://localhost:${PORT}`);
 });

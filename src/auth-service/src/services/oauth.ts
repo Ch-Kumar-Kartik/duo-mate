@@ -1,9 +1,5 @@
-// src/auth-service/src/services/oauth.ts
-// TODO: Implement Google OAuth service
-
 import { googleConfig } from '../config/google.js';
-// import type { GoogleUserInfo, OAuthTokens } from '../types/auth.js';
-
+import type { GoogleUserInfo, OAuthTokens } from '../types/auth.js';
 /**
  * Generate the Google OAuth authorization URL
  * 

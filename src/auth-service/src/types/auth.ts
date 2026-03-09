@@ -1,30 +1,27 @@
-// src/auth-service/src/types/auth.ts
-// TODO: Implement TypeScript interfaces for auth
-
-/**
- * User info returned from Google OAuth
- */
 export interface GoogleUserInfo {
-    // TODO: Add fields - id, email, name, picture
+    id: string,
+    email: string,
+    name: string,
+    picture?: string,
 }
 
-/**
- * OAuth tokens from Google
- */
 export interface OAuthTokens {
-    // TODO: Add fields - access_token, refresh_token, expires_in, token_type
+    access_token: string,
+    refresh_token?: string,
+    expires_in: number,
+    token_type: string,
 }
 
-/**
- * Session data stored in Redis
- */
 export interface SessionData {
-    // TODO: Add fields - userId, email, tokens, createdAt
+    userId: string,
+    email: string,
+    tokens: OAuthTokens,
+    createdAt: Date,
 }
 
-/**
- * JWT payload for internal auth
- */
 export interface JwtPayload {
-    // TODO: Add fields - sub (userId), email, iat, exp
+    sub: string,
+    email: string,
+    iat?: number,
+    exp?: number,
 }

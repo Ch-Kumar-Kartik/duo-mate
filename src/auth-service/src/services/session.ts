@@ -1,71 +1,87 @@
-// src/auth-service/src/services/session.ts
-// TODO: Implement session storage service
+import crypto from "node:crypto";
+import type { OAuthTokens, SessionData } from "../types/auth.js";
 
-// import Redis from 'ioredis';
-// import type { SessionData, OAuthTokens } from '../types/auth.js';
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
-// const redis = new Redis(process.env.REDIS_URL);
+type SessionRecord = SessionData & { expiresAt: number };
+
+const sessions = new Map<string, SessionRecord>();
+const oauthTokensByUserId = new Map<string, OAuthTokens>();
+
+function isExpired(record: SessionRecord): boolean {
+  return Date.now() >= record.expiresAt;
+}
+
+function cleanupExpiredSessions(): void {
+  for (const [sessionId, record] of sessions) {
+    if (isExpired(record)) {
+      sessions.delete(sessionId);
+    }
+  }
+}
+
+// Periodic background cleanup to avoid unbounded memory growth
+const cleanupTimer = setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS);
+// Allow process to exit naturally in dev/tests when this is the only pending handle
+cleanupTimer.unref();
 
 /**
- * Create a new session for a user
- * 
- * Steps:
- * 1. Generate a unique session ID (use crypto.randomUUID())
- * 2. Store session data in Redis with TTL (7 days)
- * 3. Return the session ID
- * 
- * Redis key format: session:{sessionId}
+ * Redis equivalent:
+ * - key: session:{sessionId}
+ * - value: JSON(SessionData)
+ * - TTL: 7 days
  */
 export async function createSession(
-    userId: string,
-    email: string,
-    tokens: any
+  userId: string,
+  email: string,
 ): Promise<string> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+  const sessionId = crypto.randomUUID();
+  const now = Date.now();
+
+  sessions.set(sessionId, {
+    userId,
+    email,
+    createdAt: new Date(now),
+    expiresAt: now + SESSION_TTL_MS,
+  });
+
+  return sessionId;
 }
 
-/**
- * Get session data by session ID
- * 
- * Steps:
- * 1. Fetch from Redis using key session:{sessionId}
- * 2. Parse JSON and return session data
- * 3. Return null if not found
- */
-export async function getSession(sessionId: string): Promise<any | null> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+export async function getSession(
+  sessionId: string,
+): Promise<SessionData | null> {
+  const record = sessions.get(sessionId);
+  if (!record) return null;
+
+  if (isExpired(record)) {
+    sessions.delete(sessionId);
+    return null;
+  }
+
+  const { expiresAt: _expiresAt, ...session } = record;
+  return session;
 }
 
-/**
- * Delete a session (logout)
- */
 export async function deleteSession(sessionId: string): Promise<void> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+  sessions.delete(sessionId);
 }
 
 /**
- * Store OAuth tokens for a user (for Gmail API access later)
- * 
- * This is separate from session - used by the FastAPI pipeline
- * to fetch emails using the user's access token
- * 
- * Redis key format: oauth_tokens:{userId}
+ * Redis equivalent:
+ * - key: oauth_tokens:{userId}
+ * - value: JSON(OAuthTokens)
  */
 export async function storeOAuthTokens(
-    userId: string,
-    tokens: any
+  userId: string,
+  tokens: OAuthTokens,
 ): Promise<void> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+  oauthTokensByUserId.set(userId, tokens);
 }
 
-/**
- * Get OAuth tokens for a user (used by FastAPI pipeline)
- */
-export async function getOAuthTokens(userId: string): Promise<any | null> {
-    // TODO: Implement
-    throw new Error('Not implemented');
+export async function getOAuthTokens(
+  userId: string,
+): Promise<OAuthTokens | null> {
+  return oauthTokensByUserId.get(userId) ?? null;
 }

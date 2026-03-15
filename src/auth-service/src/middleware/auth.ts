@@ -1,36 +1,44 @@
-// src/auth-service/src/middleware/auth.ts
-// TODO: Implement auth middleware
+import type { Request, Response, NextFunction } from "express";
+import { verifyToken } from "../services/jwt.js";
+import type { JwtPayload } from "../types/auth.js";
 
-import { Request, Response, NextFunction } from 'express';
-// import { verifyToken } from '../services/jwt.js';
+function extractBearerToken(authorizationHeader?: string): string | null {
+  if (!authorizationHeader) return null;
+  if (!authorizationHeader.startsWith("Bearer ")) return null;
 
-/**
- * Auth middleware - protects routes that require authentication
- * 
- * Steps:
- * 1. Get token from Authorization header (Bearer token) or cookie
- * 2. Verify the JWT
- * 3. Attach user info to req.user
- * 4. Call next() or return 401
- * 
- * Usage: router.get('/protected', authMiddleware, handler)
- */
-export function authMiddleware(req: Request, res: Response, next: NextFunction) {
-    // TODO: Implement
+  const token = authorizationHeader.slice("Bearer ".length).trim();
+  return token.length > 0 ? token : null;
+}
 
-    // Example:
-    // const authHeader = req.headers.authorization;
-    // if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    //   return res.status(401).json({ error: 'No token provided' });
-    // }
-    // const token = authHeader.split(' ')[1];
-    // try {
-    //   const payload = verifyToken(token);
-    //   (req as any).user = payload;
-    //   next();
-    // } catch (error) {
-    //   return res.status(401).json({ error: 'Invalid token' });
-    // }
+function extractTokenFromRequest(req: Request): string | null {
+  const bearerToken = extractBearerToken(req.headers.authorization);
+  if (bearerToken) return bearerToken;
 
-    res.status(501).json({ error: 'Auth middleware not implemented' });
+  const cookieToken =
+    req.cookies?.token ?? req.cookies?.access_token ?? req.cookies?.jwt ?? null;
+
+  return typeof cookieToken === "string" && cookieToken.length > 0
+    ? cookieToken
+    : null;
+}
+
+export function authMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  const token = extractTokenFromRequest(req);
+
+  if (!token) {
+    res.status(401).json({ error: "Not authenticated: token missing" });
+    return;
+  }
+
+  try {
+    const payload = verifyToken(token) as JwtPayload;
+    (req as any).user = payload;
+    next();
+  } catch {
+    res.status(401).json({ error: "Not authenticated: invalid token" });
+  }
 }

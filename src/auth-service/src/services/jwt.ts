@@ -1,47 +1,42 @@
-// src/auth-service/src/services/jwt.ts
-// TODO: Implement JWT service
+import jwt from 'jsonwebtoken';
+import type { JwtPayload } from '../types/auth.js';
 
-// import jwt from 'jsonwebtoken';
-// import type { JwtPayload } from '../types/auth.js';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+const JWT_SECRET_RAW = process.env.JWT_SECRET || process.env.DEFAULT_JWT_SECRET;
+if (!JWT_SECRET_RAW) {
+    throw new Error('JWT_SECRET or DEFAULT_JWT_SECRET must be set in environment variables');
+}
+const JWT_SECRET: string = JWT_SECRET_RAW;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 
-/**
- * Create a signed JWT token
- * 
- * Steps:
- * 1. Build payload with: sub (userId), email, iat (issued at)
- * 2. Sign with JWT_SECRET and set expiration
- * 3. Return the signed token
- * 
- * Docs: https://www.npmjs.com/package/jsonwebtoken
- */
 export function createToken(userId: string, email: string): string {
-    // TODO: Implement using jsonwebtoken.sign()
-    throw new Error('Not implemented');
+    if (userId && email) {
+        const payload: JwtPayload = {
+            sub: userId,
+            email,
+            iat: Math.floor(Date.now() / 1000),
+        };
+        const token: string = jwt.sign(payload, JWT_SECRET, {
+            expiresIn: JWT_EXPIRES_IN as any,
+        });
+        return token;
+    } else {
+        throw new Error('Not implemented');
+    }
 }
 
-/**
- * Verify and decode a JWT token
- * 
- * Steps:
- * 1. Verify the token signature with JWT_SECRET
- * 2. Check expiration
- * 3. Return the decoded payload or throw error
- */
 export function verifyToken(token: string): any {
-    // TODO: Implement using jsonwebtoken.verify()
-    throw new Error('Not implemented');
+    if (token) {
+        return jwt.verify(token, JWT_SECRET) as unknown as JwtPayload;
+    } else {
+        throw new Error('Not implemented');
+    }
 }
 
-/**
- * Decode a JWT without verification (for expired tokens)
- * 
- * Use case: When token is expired but you need to read the userId
- * to fetch refresh_token from session storage
- */
-export function decodeToken(token: string): any {
-    // TODO: Implement using jsonwebtoken.decode()
-    throw new Error('Not implemented');
+export function decodeToken(token: string): JwtPayload | null {
+    if (token) {
+        const decoded = jwt.decode(token);
+        return decoded ? (decoded as unknown as JwtPayload) : null;
+    } else {
+        return null;
+    }
 }

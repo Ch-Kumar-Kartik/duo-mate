@@ -1,6 +1,3 @@
-// src/auth-service/src/services/email-etl.ts
-// TODO: Implement the Email ETL (Extract-Transform-Load) pipeline
-
 /**
  * Email ETL Pipeline
  *
@@ -8,17 +5,6 @@
  * - GmailClient (Extract)   → fetches raw emails from Gmail API
  * - Transform functions      → parse raw Gmail messages into your Email model
  * - Email Mongoose model     → saves to MongoDB (Load)
- *
- * ──────────────────────────────────────────────────────────────────
- *
- * Steps to implement:
- *
- * 1. Import dependencies:
- *    - import { GmailClient } from './gmail.js';
- *    - import { Email } from '../models/email.model.js';
- *    - import { User } from '../models/user.model.js';
- *    - import type { IEmail, IGmailMessage } from '../types/email.js';
- *
  * ──────────────────────────────────────────────────────────────────
  *
  * 2. Implement the TRANSFORM function:
@@ -146,10 +132,12 @@
  *    const result = await pipeline.run(fullSync);
  */
 
-import { GmailClient } from './gmail.js';
-// import { Email } from '../models/email.model.js';
-// import { User } from '../models/user.model.js';
-// import type { IEmail, IGmailMessage } from '../types/email.js';
+import { GmailClient } from "./gmail.js";
+import { Email } from '../models/email.model.js';
+import { User } from '../models/user.model.js';
+import type { IEmail, IGmailMessage } from '../types/email.js';
+
+export function transformGmailMessage(raw: IGmailMessage, userId: string): IEmail 
 
 /**
  * Transforms a raw Gmail API message into your IEmail format.
@@ -189,16 +177,18 @@ import { GmailClient } from './gmail.js';
 // }
 
 export class EmailETLPipeline {
-    // TODO: Implement constructor and run() method
-    // Follow the steps in section 3 and 4 above
+  // TODO: Implement constructor and run() method
+  // Follow the steps in section 3 and 4 above
 
-    constructor(userId: string, accessToken: string, batchSize = 50) {
-        // TODO: Initialize gmailClient, userId, batchSize
-        throw new Error('Not implemented');
-    }
+  constructor(userId: string, accessToken: string, batchSize = 50) {
+    // TODO: Initialize gmailClient, userId, batchSize
+    throw new Error("Not implemented");
+  }
 
-    async run(fullSync: boolean = false): Promise<{ synced: number; errors: number }> {
-        // TODO: Implement the full ETL flow — follow section 4 above
-        throw new Error('Not implemented');
-    }
+  async run(
+    fullSync: boolean = false,
+  ): Promise<{ synced: number; errors: number }> {
+    // TODO: Implement the full ETL flow — follow section 4 above
+    throw new Error("Not implemented");
+  }
 }

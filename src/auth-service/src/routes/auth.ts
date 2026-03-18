@@ -12,7 +12,12 @@ const router = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const STATE_COOKIE_NAME = "oauth_state";
-const TOKEN_COOKIE_NAME = "auth_token";
+const TOKEN_COOKIE_NAME = "token";
+const LEGACY_TOKEN_COOKIE_NAMES = [
+  "auth_token",
+  "access_token",
+  "jwt",
+] as const;
 
 router.get("/google/login", (req, res) => {
   const { url, state } = generateAuthUrl();
@@ -106,6 +111,11 @@ router.get("/me", authMiddleware, (req, res) => {
 
 router.post("/logout", async (req, res) => {
   res.clearCookie(TOKEN_COOKIE_NAME);
+
+  for (const cookieName of LEGACY_TOKEN_COOKIE_NAMES) {
+    res.clearCookie(cookieName);
+  }
+
   res.clearCookie(STATE_COOKIE_NAME);
 
   return res.json({ success: true });

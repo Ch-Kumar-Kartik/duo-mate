@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import axios from "axios";
 import { googleConfig } from "../config/google.js";
 import type { GoogleUserInfo, OAuthTokens } from "../types/auth.js";
 import "dotenv/config";
@@ -31,35 +32,39 @@ export async function exchangeCodeForTokens(
     grant_type: "authorization_code",
   });
 
-  const response = await fetch(googleConfig.tokenUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
+  const response = await axios.post<OAuthTokens>(
+    googleConfig.tokenUrl,
+    body.toString(),
+    {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      validateStatus: null, // don't throw on non-2xx; we handle it below
+    },
+  );
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Token exchange failed: ${error.error_description}`);
+  if (response.status < 200 || response.status >= 300) {
+    const errorData = response.data as any;
+    throw new Error(
+      `Token exchange failed: ${errorData?.error_description ?? errorData?.error ?? response.status}`,
+    );
   }
 
-  const tokens = await response.json();
-  return tokens as OAuthTokens;
+  return response.data;
 }
 
 export async function getUserInfo(
   accessToken: string,
 ): Promise<GoogleUserInfo> {
-  const response = await fetch(googleConfig.userInfoUrl, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+  const response = await axios.get<any>(googleConfig.userInfoUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    validateStatus: null,
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to fetch user info");
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Failed to fetch user info: HTTP ${response.status}`);
   }
 
-  const userInfo = await response.json();
+  const userInfo = response.data;
+
   // Google v3 userinfo returns 'sub' as the subject identifier
   return {
     ...userInfo,
@@ -77,17 +82,21 @@ export async function refreshAccessToken(
     grant_type: "refresh_token",
   });
 
-  const response = await fetch(googleConfig.tokenUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
+  const response = await axios.post<OAuthTokens>(
+    googleConfig.tokenUrl,
+    body.toString(),
+    {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      validateStatus: null,
+    },
+  );
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Token refresh failed: ${error.error_description}`);
+  if (response.status < 200 || response.status >= 300) {
+    const errorData = response.data as any;
+    throw new Error(
+      `Token refresh failed: ${errorData?.error_description ?? errorData?.error ?? response.status}`,
+    );
   }
 
-  const tokens = await response.json();
-  return tokens as OAuthTokens;
+  return response.data;
 }

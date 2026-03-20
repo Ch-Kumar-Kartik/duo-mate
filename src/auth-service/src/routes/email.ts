@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { authMiddleware } from "../middleware/auth.js";
 import { EmailETLPipeline } from "../services/email-etl.js";
+import { refreshAccessToken } from "../services/oauth.js";
 import { Email } from "../models/email.model.js";
 import { User } from "../models/user.model.js";
 
@@ -8,19 +9,27 @@ const router = Router();
 
 router.post("/sync", authMiddleware, async (req: Request, res: Response) => {
   const fullSync = req.query.full === "true";
+  const syncLimit = Math.min(
+    500,
+    Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50),
+  );
   const userId = (req as any).user.sub as string;
 
   try {
+    console.log(`[sync] starting for userId=${userId} fullSync=${fullSync}`);
+
     const user = await User.findOne({ googleId: userId })
-      .select("accessToken syncStatus")
+      .select("accessToken refreshToken tokenExpiresAt syncStatus")
       .lean();
 
     if (!user) {
+      console.warn(`[sync] user not found: ${userId}`);
       res.status(404).json({ error: "User not found" });
       return;
     }
 
     if (!user.accessToken) {
+      console.warn(`[sync] no accessToken on user: ${userId}`);
       res.status(400).json({
         error: "No access token available. Please re-authenticate.",
       });
@@ -33,8 +42,68 @@ router.post("/sync", authMiddleware, async (req: Request, res: Response) => {
       return;
     }
 
-    const pipeline = new EmailETLPipeline(userId, user.accessToken);
+    // ── Proactive token refresh ─────────────────────────────────────────────
+    // Google access tokens expire in ~1 hour. Refresh before starting the
+    // ETL pipeline so that listAllMessages never sees a stale token.
+    let accessToken = user.accessToken;
+    const fiveMinutesMs = 5 * 60 * 1000;
+    const tokenExpired =
+      user.tokenExpiresAt &&
+      user.tokenExpiresAt.getTime() < Date.now() + fiveMinutesMs;
+
+    if (tokenExpired) {
+      console.log(`[sync] access token expired or expiring soon — refreshing`);
+
+      if (!user.refreshToken) {
+        res.status(401).json({
+          error:
+            "Access token expired and no refresh token stored. Please re-authenticate.",
+        });
+        return;
+      }
+
+      try {
+        const newTokens = await refreshAccessToken(user.refreshToken);
+        accessToken = newTokens.access_token;
+
+        await User.findOneAndUpdate(
+          { googleId: userId },
+          {
+            $set: {
+              accessToken: newTokens.access_token,
+              tokenExpiresAt: new Date(
+                Date.now() + newTokens.expires_in * 1000,
+              ),
+            },
+          },
+        );
+
+        console.log(`[sync] access token refreshed successfully`);
+      } catch (refreshErr) {
+        const msg =
+          refreshErr instanceof Error ? refreshErr.message : String(refreshErr);
+        console.error(`[sync] token refresh failed: ${msg}`);
+        res.status(401).json({
+          error: "Token refresh failed. Please re-authenticate.",
+          details: msg,
+        });
+        return;
+      }
+    } else {
+      const expiresIn = user.tokenExpiresAt
+        ? Math.round((user.tokenExpiresAt.getTime() - Date.now()) / 1000)
+        : "unknown";
+      console.log(`[sync] access token valid — expires in ${expiresIn}s`);
+    }
+
+    // ── Run ETL ─────────────────────────────────────────────────────────────
+    console.log(`[sync] handing off to EmailETLPipeline — limit=${syncLimit}`);
+    const pipeline = new EmailETLPipeline(userId, accessToken, 50, syncLimit);
     const result = await pipeline.run(fullSync);
+
+    console.log(
+      `[sync] finished — synced=${result.synced} errors=${result.errors}`,
+    );
 
     res.status(200).json({
       success: true,
@@ -43,6 +112,7 @@ router.post("/sync", authMiddleware, async (req: Request, res: Response) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error(`[sync] unhandled error: ${message}`);
     res.status(500).json({ error: "Sync failed", details: message });
   }
 });

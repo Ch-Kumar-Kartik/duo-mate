@@ -1,3 +1,4 @@
+import axios from "axios";
 import type {
   IListMessagesOptions,
   IListMessagesResponse,
@@ -41,36 +42,41 @@ export class GmailClient {
       url.searchParams.append("labelIds", labelId);
     }
 
-    const response = await fetch(url.toString(), {
+    const response = await axios.get<IListMessagesResponse>(url.toString(), {
       headers: this.headers,
+      validateStatus: null,
     });
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("Token expired");
-      }
-      throw new Error("Failed to list messages");
+    if (response.status === 401) {
+      throw new Error("Token expired");
     }
 
-    const data = (await response.json()) as IListMessagesResponse;
-    return data;
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`Failed to list messages: HTTP ${response.status}`);
+    }
+
+    return response.data;
   }
 
   async getMessage(messageId: string): Promise<IGmailMessage> {
-    const url = new URL(`${GMAIL_API_BASE}/messages/${messageId}?format=full`);
-    const response = await fetch(url.toString(), {
+    const url = `${GMAIL_API_BASE}/messages/${messageId}?format=full`;
+
+    const response = await axios.get<IGmailMessage>(url, {
       headers: this.headers,
+      validateStatus: null,
     });
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("Token expired");
-      }
-      throw new Error("Failed to get message");
+    if (response.status === 401) {
+      throw new Error("Token expired");
     }
 
-    const data = (await response.json()) as IGmailMessage;
-    return data;
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(
+        `Failed to get message ${messageId}: HTTP ${response.status}`,
+      );
+    }
+
+    return response.data;
   }
 
   async getMessagesBatch(messageIds: string[]): Promise<IGmailMessage[]> {
@@ -86,13 +92,11 @@ export class GmailClient {
 
       results.push(...chunkResults);
 
-      const sleep = (ms: number) =>
-        new Promise((resolve) => setTimeout(resolve, ms));
-
       if (i + chunkSize < messageIds.length) {
-        await sleep(100);
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
+
     return results;
   }
 

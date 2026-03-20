@@ -174,11 +174,18 @@ export class EmailETLPipeline {
   private gmailClient: GmailClient;
   private userId: string;
   private batchSize: number;
+  private syncLimit: number;
 
-  constructor(userId: string, accessToken: string, batchSize = 50) {
+  constructor(
+    userId: string,
+    accessToken: string,
+    batchSize = 50,
+    syncLimit = 50,
+  ) {
     this.userId = userId;
     this.gmailClient = new GmailClient(accessToken);
     this.batchSize = batchSize;
+    this.syncLimit = syncLimit;
   }
 
   async run(fullSync = false): Promise<{ synced: number; errors: number }> {
@@ -190,6 +197,9 @@ export class EmailETLPipeline {
 
     try {
       // ── b. Determine Gmail query ────────────────────────────────────────────
+      console.log(
+        `[etl] pipeline started — userId=${this.userId} fullSync=${fullSync}`,
+      );
       let query = "";
 
       if (!fullSync) {
@@ -206,10 +216,36 @@ export class EmailETLPipeline {
       }
 
       // ── c. Extract: list all message IDs ───────────────────────────────────
-      const messageRefs = await this.gmailClient.listAllMessages({ query });
-      console.log(`Found ${messageRefs.length} messages to sync`);
+      console.log(
+        `[etl] listing messages — query="${query || "(all messages)"}"`,
+      );
+      const listOptions = { query, maxResults: this.syncLimit };
+      let messageRefs: { id: string; threadId: string }[];
+      try {
+        messageRefs = await this.gmailClient.listAllMessages(listOptions, 1);
+      } catch (listErr) {
+        const listMsg =
+          listErr instanceof Error ? listErr.message : String(listErr);
+        if (listMsg.includes("Token expired")) {
+          console.log(
+            `[etl] token expired during listing — attempting token refresh`,
+          );
+          const refreshed = await this.tryRefreshToken();
+          if (!refreshed) {
+            throw new Error(
+              "Token expired during message listing and refresh failed — please re-authenticate.",
+            );
+          }
+          console.log(`[etl] token refreshed — retrying listing`);
+          messageRefs = await this.gmailClient.listAllMessages(listOptions, 1);
+        } else {
+          throw listErr;
+        }
+      }
+      console.log(`[etl] found ${messageRefs.length} messages to sync`);
 
       if (messageRefs.length === 0) {
+        console.log(`[etl] inbox up to date — nothing to sync`);
         await this.finalize(0, 0);
         return { synced: 0, errors: 0 };
       }
@@ -217,6 +253,10 @@ export class EmailETLPipeline {
       // ── d. Extract + Transform + Load in batches ────────────────────────────
       const batches = chunkArray(messageRefs, this.batchSize);
       const totalBatches = batches.length;
+
+      console.log(
+        `[etl] processing ${messageRefs.length} messages across ${totalBatches} batches (batchSize=${this.batchSize})`,
+      );
 
       let totalSynced = 0;
       let totalErrors = 0;
@@ -298,7 +338,8 @@ export class EmailETLPipeline {
       // ── f. Return result ────────────────────────────────────────────────────
       return { synced: totalSynced, errors: totalErrors };
     } catch (error) {
-      console.error("ETL pipeline error:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[etl] pipeline failed — userId=${this.userId}: ${errMsg}`);
 
       await User.findOneAndUpdate(
         { googleId: this.userId },
@@ -310,20 +351,21 @@ export class EmailETLPipeline {
   }
 
   /**
-   * Try to refresh the access token and retry the batch.
-   * Returns the fetched messages on success, null on failure.
+   * Refresh the Google access token, persist the new token to MongoDB,
+   * and swap in a fresh GmailClient on this instance.
+   * Returns true on success, false on any failure.
    */
-  private async tryRefreshAndRetry(
-    batchIds: string[],
-  ): Promise<IGmailMessage[] | null> {
+  private async tryRefreshToken(): Promise<boolean> {
     try {
       const user = await User.findOne({ googleId: this.userId }).select(
         "refreshToken",
       );
 
       if (!user?.refreshToken) {
-        console.error("No refresh token available for user", this.userId);
-        return null;
+        console.error(
+          `[etl] no refresh token stored for userId=${this.userId}`,
+        );
+        return false;
       }
 
       const newTokens = await refreshAccessToken(user.refreshToken);
@@ -339,12 +381,31 @@ export class EmailETLPipeline {
         },
       );
 
-      // Swap in the new access token for subsequent requests
+      // Swap in the new access token for all subsequent requests
       this.gmailClient = new GmailClient(newTokens.access_token);
+      console.log(`[etl] access token refreshed successfully`);
+      return true;
+    } catch (err) {
+      console.error(`[etl] token refresh failed:`, err);
+      return false;
+    }
+  }
 
+  /**
+   * Try to refresh the access token and retry a failed batch fetch.
+   * Returns the fetched messages on success, null on failure.
+   */
+  private async tryRefreshAndRetry(
+    batchIds: string[],
+  ): Promise<IGmailMessage[] | null> {
+    const refreshed = await this.tryRefreshToken();
+    if (!refreshed) {
+      return null;
+    }
+    try {
       return await this.gmailClient.getMessagesBatch(batchIds);
     } catch (err) {
-      console.error("Token refresh failed:", err);
+      console.error(`[etl] batch retry after token refresh failed:`, err);
       return null;
     }
   }

@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.js";
 import emailRoutes from "./routes/email.js";
+import featureRoutes from "./routes/feature.js";
 import "dotenv/config";
 import { connectDB } from "./config/mongodb.js";
 
@@ -17,6 +18,7 @@ app.use(express.json());
 // Routes
 app.use("/auth", authRoutes);
 app.use("/email", emailRoutes);
+app.use("/feature", featureRoutes);
 
 // Health check — always responds, even when MongoDB is down
 app.get("/health", (_req, res) => {

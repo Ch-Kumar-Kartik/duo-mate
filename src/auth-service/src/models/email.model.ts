@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
-import type { IEmail } from "../types/email.ts";
+import type { IEmail } from "../types/email.js";
 
 export interface IEmailDocument extends IEmail, Document {}
 

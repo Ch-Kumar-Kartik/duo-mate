@@ -2,8 +2,10 @@ import { Router, Request, Response } from "express";
 import { authMiddleware } from "../middleware/auth.js";
 import { EmailETLPipeline } from "../services/email-etl.js";
 import { refreshAccessToken } from "../services/oauth.js";
+import { sendReply } from "../services/gmail-send.js";
 import { Email } from "../models/email.model.js";
 import { User } from "../models/user.model.js";
+import type { ISendEmailRequest } from "../types/ai.js";
 
 const router = Router();
 
@@ -254,5 +256,79 @@ router.get(
     }
   },
 );
+
+router.post("/send", authMiddleware, async (req: Request, res: Response) => {
+  const userId = (req as any).user.sub as string;
+  const { to, subject, replyBody, threadId } =
+    req.body as Partial<ISendEmailRequest>;
+
+  if (!to || typeof to !== "string" || to.trim().length === 0) {
+    res
+      .status(400)
+      .json({ error: "to is required and must be a non-empty string" });
+    return;
+  }
+
+  if (!subject || typeof subject !== "string" || subject.trim().length === 0) {
+    res
+      .status(400)
+      .json({ error: "subject is required and must be a non-empty string" });
+    return;
+  }
+
+  if (
+    !replyBody ||
+    typeof replyBody !== "string" ||
+    replyBody.trim().length === 0
+  ) {
+    res
+      .status(400)
+      .json({ error: "replyBody is required and must be a non-empty string" });
+    return;
+  }
+
+  if (
+    !threadId ||
+    typeof threadId !== "string" ||
+    threadId.trim().length === 0
+  ) {
+    res
+      .status(400)
+      .json({ error: "threadId is required and must be a non-empty string" });
+    return;
+  }
+
+  try {
+    const user = await User.findOne({ googleId: userId })
+      .select("accessToken")
+      .lean();
+
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (!user.accessToken) {
+      res.status(400).json({
+        error: "No access token available. Please re-authenticate.",
+      });
+      return;
+    }
+
+    await sendReply(
+      user.accessToken,
+      to.trim(),
+      subject.trim(),
+      replyBody.trim(),
+      threadId.trim(),
+    );
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[email] send failed: ${message}`);
+    res.status(500).json({ error: "Failed to send email", details: message });
+  }
+});
 
 export default router;

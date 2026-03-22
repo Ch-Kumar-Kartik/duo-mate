@@ -572,27 +572,27 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 > **Goal**: Get user data into the system
 
 - [x] **1.1 Basic Project Setup** – Initialize repository, Poetry, Next.js, Docker Compose (MongoDB, Redis)
-- [ ] **1.2 MongoDB Data Models** – User/Document entities, connection manager, CRUD operations
-- [ ] **1.3 Simple Twitter ETL** – Parse Twitter archive, validate, clean, store in MongoDB
+- [x] **1.2 MongoDB Data Models** – User/Document entities, connection manager, CRUD operations
+- [x] **1.3 Simple Twitter ETL** – Parse Twitter archive, validate, clean, store in MongoDB
 
 ### Phase 2: Feature Pipeline (Weeks 4-6)
 > **Goal**: Transform raw data into embeddings
 
-- [ ] **2.1 Text Chunking** – Text cleaning, sliding window chunking (512 tokens, 50 overlap)
-- [ ] **2.2 Embedding Generation** – Setup Qdrant, E5-base-v2/Sentence-BERT, batch processing
-- [ ] **2.3 Qdrant Integration** – Per-user collections, vector upsert, metadata storage
+- [x] **2.1 Text Chunking** – Text cleaning, sliding window chunking (512 tokens, 50 overlap)
+- [x] **2.2 Embedding Generation** – Setup Qdrant, E5-base-v2/Sentence-BERT, batch processing
+- [x] **2.3 Qdrant Integration** – Per-user collections, vector upsert, metadata storage
 
 ### Phase 3: Basic Inference / RAG (Weeks 7-9)
 > **Goal**: Retrieve similar content (no LLM yet)
 
-- [ ] **3.1 RAG Retrieval** – Vector search in Qdrant, top-k retrieval, context formatting
-- [ ] **3.2 Simple Inference API** – FastAPI setup, `/generate` endpoint (RAG only)
-- [ ] **3.3 Basic Frontend** – Simple UI to test RAG retrieval
+- [x] **3.1 RAG Retrieval** – Vector search in Qdrant, top-k retrieval, context formatting
+- [x] **3.2 Simple Inference API** – FastAPI setup, `/generate` endpoint (RAG only)
+- [x] **3.3 Basic Frontend** – Simple UI to test RAG retrieval
 
 ### Phase 4: Training Pipeline (Weeks 10-13)
 > **Goal**: Fine-tune a model on user data
 
-- [ ] **4.1 Dataset Generation** – Instruction datasets from tweets, train/val split, JSONL export
+- [x] **4.1 Dataset Generation** – Instruction datasets from tweets, train/val split, JSONL export
 - [ ] **4.2 LoRA Fine-tuning Setup** – Google Colab notebook, Unsloth, Mistral-7B, LoRA config
 - [ ] **4.3 Model Registry** – Upload to Hugging Face Hub, model versioning
 
@@ -606,9 +606,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ### Phase 6: Authentication (Weeks 17-19)
 > **Goal**: Secure the application with OAuth
 
-- [ ] **6.1 OAuth Setup** – Google/GitHub OAuth apps, NextAuth.js, Redis sessions
-- [ ] **6.2 Backend Authentication** – JWT generation, Redis sessions, protected endpoints
-- [ ] **6.3 User Management** – Profile endpoints, settings page, usage stats
+- [x] **6.1 OAuth Setup** – Google/GitHub OAuth apps, NextAuth.js, Redis sessions
+- [x] **6.2 Backend Authentication** – JWT generation, Redis sessions, protected endpoints
+- [x] **6.3 User Management** – Profile endpoints, settings page, usage stats
 
 ### Phase 7: Optimization & Polish (Weeks 20-22)
 > **Goal**: Production-ready features
@@ -624,7 +624,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] **8.2 Backend Deployment** – Deploy FastAPI to Render, MongoDB Atlas, Qdrant Cloud, Upstash Redis
 
 ---
-
-
-
-
